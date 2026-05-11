@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chess Online</title>
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="container">
+    <h1>♟ Chess Online</h1>
+
+    <div id="lobby">
+      <input id="room-input" placeholder="Enter room code (e.g. room1)" />
+      <button onclick="joinGame()">Join Game</button>
+    </div>
+
+    <div id="game" style="display:none">
+      <div id="status"></div>
+      <div id="board" style="width:480px"></div>
+      <div id="turn-indicator"></div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+  <script>
+    const socket = io();
+    let board, game;
+    let myColor = null;
+    let roomId = null;
+
+    function joinGame() {
+      roomId = document.getElementById('room-input').value.trim();
+      if (!roomId) return alert('Enter a room code!');
+      socket.emit('join', { room: roomId });
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+    }
+
+    socket.on('assigned_color', (data) => {
+      myColor = data.color;
+      document.getElementById('status').textContent =
+        `You are playing as ${myColor}`;
+
+      game = new Chess();
+      board = Chessboard('board', {
+        draggable: true,
+        position: 'start',
+        orientation: myColor,
+        onDragStart,
+        onDrop,
+        onSnapEnd,
+        pieceTheme: '\fhttps://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+      });
+    });
+
+    socket.on('board_state', (data) => {
+      game.load(data.fen);
+      board.position(data.fen);
+
+      const isMyTurn =
+        (game.turn() === 'w' && myColor === 'white') ||
+        (game.turn() === 'b' && myColor === 'black');
+
+      document.getElementById('turn-indicator').textContent =
+        isMyTurn ? '🟢 Your turn' : '⏳ Opponent\'s turn';
+
+      if (data.result === 'checkmate') {
+        document.getElementById('status').textContent =
+          isMyTurn ? '😞 You lost! Checkmate.' : '🏆 You won! Checkmate!';
+      } else if (data.result === 'stalemate') {
+        document.getElementById('status').textContent = '🤝 Stalemate! Draw.';
+      } else if (data.result === 'check') {
+        document.getElementById('turn-indicator').textContent += ' ⚠️ Check!';
+      }
+    });
+
+    socket.on('invalid_move', () => {
+      board.position(game.fen()); // snap back
+    });
+
+    function onDragStart(source, piece) {
+      if (game.game_over()) return false;
+      const isMyTurn =
+        (game.turn() === 'w' && myColor === 'white') ||
+        (game.turn() === 'b' && myColor === 'black');
+      if (!isMyTurn) return false;
+      if (myColor === 'white' && piece.startsWith('b')) return false;
+      if (myColor === 'black' && piece.startsWith('w')) return false;
+    }
+
+    function onDrop(source, target) {
+      const move = game.move({ from: source, to: target, promotion: 'q' });
+      if (move === null) return 'snapback';
+      socket.emit('move', { room: roomId, move: move.from + move.to + (move.promotion || '') });
+    }
+
+    function onSnapEnd() {
+      board.position(game.fen());
+    }
+  </script>
+</body>
+</html>
