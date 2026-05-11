@@ -1,5 +1,6 @@
 flask
 flask-socketio
 python-chess
-eventlet
+gevent
+gevent-websocket
 gunicorn
