@@ -36,6 +36,16 @@
         
         <!-- Left Side: Board & Buttons -->
         <div>
+          <!-- NEW PROMOTION MENU -->
+          <div id="promotion-menu" style="display: none; margin-bottom: 15px; background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border-left: 5px solid #e94560;">
+            <p style="margin-top: 0; color: #eee; font-weight: bold;">Choose Promotion Piece:</p>
+            <button onclick="choosePromotion('q')">♕ Queen</button>
+            <button onclick="choosePromotion('r')">♖ Rook</button>
+            <button onclick="choosePromotion('b')">♗ Bishop</button>
+            <button onclick="choosePromotion('n')">♘ Knight</button>
+            <button onclick="cancelPromotion()" style="background: #555;">Cancel</button>
+          </div>
+          <!-- END PROMOTION MENU -->
           <div id="board" style="width:480px"></div>
           <div id="turn-indicator"></div>
           <br>
@@ -74,6 +84,7 @@
     let myColor = null;
     let roomId = null;
     let isResigned = false; // Add this custom flag
+    let pendingPromotion = null; // Tracks a move while the menu is open
     let currentMoveOffset = 0; // Tracks which past move we are looking at
     let isViewingHistory = false; // Flags if we are looking at the past
 
@@ -205,41 +216,69 @@
     }
 
     function onDrop(source, target) {
-      // 1. Get information about the piece being moved
+      if (game.game_over() || isResigned || isViewingHistory) return 'snapback';
+      
       const piece = game.get(source);
-      let promotionPiece = 'q'; // Default to Queen
-
-      // 2. Detect if the move is a pawn reaching the final rank
+      
+      // 1. Detect if it is a pawn promotion
       if (piece && piece.type === 'p') {
         const isWhitePromotion = (piece.color === 'w' && target.charAt(1) === '8');
         const isBlackPromotion = (piece.color === 'b' && target.charAt(1) === '1');
         
         if (isWhitePromotion || isBlackPromotion) {
-          // Ask the player what they want to promote to
-          let choice = prompt("Promote to: (q)ueen, (r)ook, (b)ishop, or (n)ight?", "q");
+          // Check if the move is actually legal first (e.g., not blocked)
+          const tempMove = game.move({ from: source, to: target, promotion: 'q' });
+          if (tempMove === null) return 'snapback';
+          game.undo(); // Undo it immediately, we just wanted to verify it's legal
+
+          // Open the menu and store the move coordinates
+          pendingPromotion = { source: source, target: target };
+          document.getElementById('promotion-menu').style.display = 'block';
           
-          // Verify their input is valid, otherwise fallback to Queen
-          if (choice) {
-            choice = choice.toLowerCase().trim();
-            if (['q', 'r', 'b', 'n'].includes(choice)) {
-              promotionPiece = choice;
-            }
-          }
+          // Force the pawn to visually snap back to its starting square while waiting for user input
+          return 'snapback';
         }
       }
 
-      // 3. Make the move using the player's chosen promotion piece
-      const move = game.move({ from: source, to: target, promotion: promotionPiece });
-      
-      // If the move is illegal, snap the piece back
+      // 2. Normal move processing (if it is not a promotion)
+      const move = game.move({ from: source, to: target, promotion: 'q' });
       if (move === null) return 'snapback';
       
-      // 4. Send the move to your Flask backend
       socket.emit('move', { 
           room: roomId, 
           username: username, 
           move: move.from + move.to + (move.promotion || '') 
       });
+    }
+
+    function choosePromotion(pieceType) {
+      if (!pendingPromotion) return;
+      
+      // Execute the move locally using the piece they clicked
+      const move = game.move({ 
+        from: pendingPromotion.source, 
+        to: pendingPromotion.target, 
+        promotion: pieceType 
+      });
+      
+      if (move) {
+        // Send the completed move to the Python backend
+        socket.emit('move', { 
+            room: roomId, 
+            username: username, 
+            move: move.from + move.to + pieceType
+        });
+      }
+      
+      // Hide the menu and clear the pending move
+      document.getElementById('promotion-menu').style.display = 'none';
+      pendingPromotion = null;
+    }
+
+    function cancelPromotion() {
+      // If they change their mind, just hide the menu
+      document.getElementById('promotion-menu').style.display = 'none';
+      pendingPromotion = null;
     }
 
     function onSnapEnd() {
