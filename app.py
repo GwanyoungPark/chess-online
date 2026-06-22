@@ -15,14 +15,7 @@ rooms = {}
 
 @app.route('/')
 def index():
-    # Load the patch notes from the JSON file
-    notes = []
-    if os.path.exists('patch_notes.json'):
-        with open('patch_notes.json', 'r') as file:
-            notes = json.load(file)
-            
-    # Send the notes data to index.html using Jinja2
-    return render_template('index.html', patch_notes=notes)
+    return render_template('index.html')
 
 @socketio.on('join')
 def on_join(data):
