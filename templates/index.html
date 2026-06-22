@@ -147,14 +147,22 @@
 
     socket.on('assigned_color', (data) => {
       myColor = data.color;
-      document.getElementById('status').textContent =
-        `You are playing as ${myColor}`;
+      
+      // Default the spectator's board orientation to white
+      const boardOrientation = (myColor === 'black') ? 'black' : 'white';
+      
+      // Update the status text so they know they are just watching
+      if (myColor === 'spectator') {
+        document.getElementById('status').textContent = '👁️ You are spectating';
+      } else {
+        document.getElementById('status').textContent = `You are playing as ${myColor}`;
+      }
 
       game = new Chess();
       board = Chessboard('board', {
-        draggable: true,
+        draggable: (myColor !== 'spectator'), // COMPLETELY disables dragging for spectators
         position: 'start',
-        orientation: myColor,
+        orientation: boardOrientation,
         onDragStart,
         onDrop,
         onSnapEnd,

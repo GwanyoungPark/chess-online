@@ -26,40 +26,33 @@ def index():
 
 @socketio.on('join')
 def on_join(data):
-    room = data['room']
+    room = data.get('room')
     username = data.get('username')
-    join_room(room)
+    join_room(room) # Join the socket network room [1]
     
-    # If the room doesn't exist, create it with a fresh board and a resigned tracker
+    # 1. Initialize room if it doesn't exist
     if room not in rooms:
-        rooms[room] = {'board': chess.Board(), 'players': {}, 'resigned': False}
-    
-    players = rooms[room]['players']
-    
-    # 1. Check if this is a returning player who just refreshed
-    if username in players:
-        # Re-assign them their original color!
-        emit('assigned_color', {'color': players[username]})
-        
-    # 2. If it is a new player, and the room is empty
-    elif len(players) == 0:
-        players[username] = 'white'
-        emit('assigned_color', {'color': 'white'})
-        
-    # 3. If it is a new player, and there is one person in the room
-    elif len(players) == 1:
-        players[username] = 'black'
-        emit('assigned_color', {'color': 'black'})
-        
-    # 4. Third person joins -> spectator (no color assigned)
+        rooms[room] = {'board': chess.Board(), 'players': {username: 'white'}, 'resigned': False}
+        color = 'white'
     else:
-        pass
-        
-    # Always emit the current board state and move history
+        # 2. Check if they are a returning player (Auto-Rejoin)
+        if username in rooms[room]['players']:
+            color = rooms[room]['players'][username]
+        # 3. If there is only 1 player, the new person becomes black
+        elif len(rooms[room]['players']) == 1:
+            color = 'black'
+            rooms[room]['players'][username] = color
+        # 4. NEW: If the room is full, they become a spectator!
+        else:
+            color = 'spectator'
+            
+    # Tell the user their assigned role
+    emit('assigned_color', {'color': color}, room=request.sid)
+    
+    # Always emit the current board state and move history to the room
     current_board = rooms[room]['board']
-    move_history = [move.uci() for move in current_board.move_stack] # Get the move list
-    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': None})
-
+    move_history = [move.uci() for move in current_board.move_stack]
+    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': None}, room=room)
 
 @socketio.on('move')
 def on_move(data):
