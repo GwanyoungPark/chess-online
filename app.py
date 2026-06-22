@@ -55,9 +55,11 @@ def on_join(data):
     else:
         pass
         
-    # Always emit the current board state so the refreshed player can see the pieces
+    # Always emit the current board state and move history
     current_board = rooms[room]['board']
-    emit('board_state', {'fen': current_board.fen(), 'result': None})
+    move_history = [move.uci() for move in current_board.move_stack] # Get the move list
+    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': None})
+
 
 @socketio.on('move')
 def on_move(data):
@@ -91,8 +93,10 @@ def on_move(data):
             elif board.is_check():
                 game_result = 'check'
                 
-            # Broadcast the valid move and game status to everyone in the room
-            emit('board_state', {'fen': board.fen(), 'result': game_result}, room=room)
+            # Broadcast the valid move, game status, and history to everyone
+            move_history = [move.uci() for move in board.move_stack] # Get the move list
+            emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': game_result}, room=room)
+
         else:
             # Tell the specific client their move was illegal so it snaps back
             emit('invalid_move', room=request.sid)

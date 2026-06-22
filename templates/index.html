@@ -17,7 +17,7 @@
       
       <!-- DYNAMIC PATCH NOTES SECTION -->
       <div id="patch-notes">
-        <h2>📜 Patch Notes</h2>
+        <h2>📜 Brief Patch Notes</h2>
         <ul>
           {% for note in patch_notes %}
             <li><strong>{{ note.date }} - {{ note.feature }}:</strong> {{ note.description }}</li>
@@ -30,12 +30,37 @@
 
     <div id="game" style="display:none">
       <div id="status"></div>
-      <div id="board" style="width:480px"></div>
-      <div id="turn-indicator"></div>
       
-      <br>
-      <button onclick="leaveRoom()">Return to Lobby</button>
-      <button onclick="resignGame()">Resign</button> <!-- New Resign Button -->
+      <!-- Flex container to put board and move list side-by-side -->
+      <div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start;">
+        
+        <!-- Left Side: Board & Buttons -->
+        <div>
+          <div id="board" style="width:480px"></div>
+          <div id="turn-indicator"></div>
+          <br>
+          
+          <!-- History Navigation Arrows -->
+          <div style="margin-bottom: 15px;">
+            <button onclick="navigateHistory(-1)">⬅️ Back</button>
+            <button onclick="navigateHistory(1)">Forward ➡️</button>
+          </div>
+          
+          <button onclick="leaveRoom()">Return to Lobby</button>
+          <button onclick="resignGame()">Resign</button>
+        </div>
+
+        <!-- Right Side: Move List -->
+        <div id="move-list-container" style="width: 220px; height: 480px; overflow-y: auto; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; text-align: left; border-left: 5px solid #e94560;">
+          <h3 style="margin-top: 0; color: #e94560; text-align: center;">Move List</h3>
+          <table style="width: 100%; color: #eee; font-size: 1.1rem;">
+            <tbody id="move-table">
+              <!-- Moves will be injected here via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+        
+      </div>
     </div>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -49,6 +74,8 @@
     let myColor = null;
     let roomId = null;
     let isResigned = false; // Add this custom flag
+    let currentMoveOffset = 0; // Tracks which past move we are looking at
+    let isViewingHistory = false; // Flags if we are looking at the past
 
     // 1. Automatically generate or retrieve the player's secret ID
     let username = localStorage.getItem('chessPlayerId');
@@ -117,8 +144,28 @@
     });
 
     socket.on('board_state', (data) => {
-      game.load(data.fen);
-      board.position(data.fen);
+      // Rebuild the game history from the backend moves
+      game = new Chess();
+      if (data.moves) {
+        data.moves.forEach(m => {
+          // chess.js cleanly processes standard UCI moves (e.g., 'e2e4' or 'e7e8q')
+          game.move({
+            from: m.substring(0, 2),
+            to: m.substring(2, 4),
+            promotion: m.length > 4 ? m[2] : undefined  // Fixed to m[2] to grab 'q'
+          });
+        });
+      }
+
+      // If we are looking at the live board, snap the pieces to the current state
+      if (!isViewingHistory) {
+        board.position(game.fen());
+        currentMoveOffset = game.history().length;
+      }
+      
+      updateMoveList();
+      
+      // DELETED game.load(data.fen) and board.position(data.fen) from here!
 
       const isMyTurn =
         (game.turn() === 'w' && myColor === 'white') ||
@@ -138,6 +185,7 @@
         isResigned = true; // Lock the game
         document.getElementById('status').textContent = 'White resigned! Black wins! 🎉';
       } else if (data.result === 'black_resigned') {
+        isResigned = true; // Lock the game
         document.getElementById('status').textContent = 'Black resigned! White wins! 🎉';
       }
     });
@@ -147,7 +195,7 @@
     });
 
     function onDragStart(source, piece) {
-      if (game.game_over() || isResigned) return false;
+      if (game.game_over() || isResigned || isViewingHistory) return false; 
       const isMyTurn =
         (game.turn() === 'w' && myColor === 'white') ||
         (game.turn() === 'b' && myColor === 'black');
@@ -165,6 +213,59 @@
     function onSnapEnd() {
       board.position(game.fen());
     }
+
+    function updateMoveList() {
+      const history = game.history(); // Auto-generates notation like ['e4', 'e5', 'Nf3']
+      const table = document.getElementById('move-table');
+      table.innerHTML = '';
+      
+      for (let i = 0; i < history.length; i += 2) {
+        const moveNum = (i / 2) + 1;
+        const whiteMove = history[i];
+        const blackMove = history[i+1] ? history[i+1] : '';
+        
+        // Highlight the move we are currently looking at in crimson
+        const activeIndex = currentMoveOffset - 1;
+        const wStyle = (activeIndex === i) ? 'color: #e94560; font-weight: bold;' : '';
+        const bStyle = (activeIndex === i+1) ? 'color: #e94560; font-weight: bold;' : '';
+
+        table.innerHTML += `
+          <tr>
+            <td style="width: 20%; color: #888;">${moveNum}.</td>
+            <td style="width: 40%; ${wStyle}">${whiteMove}</td>
+            <td style="width: 40%; ${bStyle}">${blackMove}</td>
+          </tr>
+        `;
+      }
+      
+      // Auto-scroll the move list to the bottom
+      const container = document.getElementById('move-list-container');
+      if (!isViewingHistory) container.scrollTop = container.scrollHeight;
+    }
+
+    function navigateHistory(step) {
+      const history = game.history();
+      currentMoveOffset += step;
+      
+      if (currentMoveOffset < 0) currentMoveOffset = 0; // Don't go before move 0
+      
+      if (currentMoveOffset >= history.length) {
+        // Back to live view
+        currentMoveOffset = history.length;
+        isViewingHistory = false;
+        board.position(game.fen());
+      } else {
+        // Looking at the past: build a temporary board up to that specific move
+        isViewingHistory = true;
+        let tempGame = new Chess();
+        for (let i = 0; i < currentMoveOffset; i++) {
+          tempGame.move(history[i]);
+        }
+        board.position(tempGame.fen());
+      }
+      updateMoveList();
+    }
+
   </script>
 </body>
 </html>
