@@ -21,9 +21,9 @@ def on_join(data):
     username = data.get('username')
     join_room(room)
     
-    # If the room doesn't exist, create it with a fresh board [1]
+    # If the room doesn't exist, create it with a fresh board and a resigned tracker
     if room not in rooms:
-        rooms[room] = {'board': chess.Board(), 'players': {}}
+        rooms[room] = {'board': chess.Board(), 'players': {}, 'resigned': False}
     
     players = rooms[room]['players']
     
@@ -56,6 +56,11 @@ def on_move(data):
     move_uci = data['move']
     
     if room not in rooms:
+        return
+        
+    # Reject the move if someone has already resigned
+    if rooms[room].get('resigned'):
+        emit('invalid_move', room=request.sid)
         return
         
     board = rooms[room]['board']
@@ -94,7 +99,10 @@ def on_resign(data):
     # 1. Verify the room exists and the user is actually a registered player in it
     if room not in rooms or username not in rooms[room]['players']:
         return
-        
+    
+    # Lock the room on the server
+    rooms[room]['resigned'] = True 
+
     player_color = rooms[room]['players'][username]
     board = rooms[room]['board']
     

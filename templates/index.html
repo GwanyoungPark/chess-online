@@ -36,6 +36,7 @@
     let board, game;
     let myColor = null;
     let roomId = null;
+    let isResigned = false; // Add this custom flag
 
     // 1. Automatically generate or retrieve the player's secret ID
     let username = localStorage.getItem('chessPlayerId');
@@ -122,6 +123,7 @@
       } else if (data.result === 'check') {
         document.getElementById('turn-indicator').textContent += ' ⚠️ Check!';
       } else if (data.result === 'white_resigned') {
+        isResigned = true; // Lock the game
         document.getElementById('status').textContent = 'White resigned! Black wins! 🎉';
       } else if (data.result === 'black_resigned') {
         document.getElementById('status').textContent = 'Black resigned! White wins! 🎉';
@@ -133,7 +135,7 @@
     });
 
     function onDragStart(source, piece) {
-      if (game.game_over()) return false;
+      if (game.game_over() || isResigned) return false;
       const isMyTurn =
         (game.turn() === 'w' && myColor === 'white') ||
         (game.turn() === 'b' && myColor === 'black');
