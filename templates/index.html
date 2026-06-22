@@ -163,7 +163,7 @@
           game.move({
             from: m.substring(0, 2),
             to: m.substring(2, 4),
-            promotion: m.length > 4 ? m[2] : undefined  // Fixed to m[2] to grab 'q'
+            promotion: m.length > 4 ? m[1] : undefined 
           });
         });
       }
