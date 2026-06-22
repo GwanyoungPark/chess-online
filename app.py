@@ -4,10 +4,11 @@ import chess
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chess-secret'
+# Using gevent for async_mode as required by your deployment setup
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
-# Store game rooms: { room_id: { board, players } }
+# Store game rooms: { room_id: { board, players: {sid: color} } }
 rooms = {}
 
 @app.route('/')
@@ -18,60 +19,62 @@ def index():
 def on_join(data):
     room = data['room']
     join_room(room)
-
+    
+    # If the room doesn't exist, create it with a fresh board
     if room not in rooms:
-        rooms[room] = {
-            'board': chess.Board(),
-            'players': []
-        }
-
-    game = rooms[room]
-    sid = request.sid
-
-    if sid not in game['players']:
-        game['players'].append(sid)
-
-    # Assign color based on join order
-    if game['players'].index(sid) == 0:
-        color = 'white'
+        rooms[room] = {'board': chess.Board(), 'players': {}}
+    
+    # Assign colors to up to 2 players based on their session ID (request.sid)
+    player_count = len(rooms[room]['players'])
+    if player_count == 0:
+        rooms[room]['players'][request.sid] = 'white'
+        emit('assigned_color', {'color': 'white'})
+    elif player_count == 1 and request.sid not in rooms[room]['players']:
+        rooms[room]['players'][request.sid] = 'black'
+        emit('assigned_color', {'color': 'black'})
     else:
-        color = 'black'
-
-    emit('assigned_color', {'color': color})
-    emit('board_state', {'fen': game['board'].fen()}, to=room)
+        # Third person joins -> becomes a spectator. No color is assigned.
+        pass
+        
+    # Emit the current board state to the person who just joined
+    current_board = rooms[room]['board']
+    emit('board_state', {'fen': current_board.fen(), 'result': None})
 
 @socketio.on('move')
 def on_move(data):
     room = data['room']
     move_uci = data['move']
-
+    
     if room not in rooms:
         return
-
-    game = rooms[room]
-    board = game['board']
-
+        
+    board = rooms[room]['board']
+    
     try:
+        # Parse the move sent by the frontend
         move = chess.Move.from_uci(move_uci)
+        
+        # Validate if the move is strictly legal
         if move in board.legal_moves:
             board.push(move)
-            result = None
+            
+            # Check endgame states
+            game_result = None
             if board.is_checkmate():
-                result = 'checkmate'
+                game_result = 'checkmate'
             elif board.is_stalemate():
-                result = 'stalemate'
+                game_result = 'stalemate'
             elif board.is_check():
-                result = 'check'
-
-            emit('board_state', {
-                'fen': board.fen(),
-                'last_move': move_uci,
-                'result': result
-            }, to=room)
+                game_result = 'check'
+                
+            # Broadcast the valid move and game status to everyone in the room
+            emit('board_state', {'fen': board.fen(), 'result': game_result}, room=room)
         else:
-            emit('invalid_move', {'move': move_uci})
-    except Exception as e:
-        emit('error', {'message': str(e)})
+            # Tell the specific client their move was illegal so it snaps back
+            emit('invalid_move', room=request.sid)
+    except ValueError:
+        # Catch errors if the move format was manipulated
+        emit('invalid_move', room=request.sid)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
