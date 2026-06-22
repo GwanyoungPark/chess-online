@@ -20,8 +20,10 @@
       <div id="status"></div>
       <div id="board" style="width:480px"></div>
       <div id="turn-indicator"></div>
+      
+      <br>
+      <button onclick="leaveRoom()">Return to Lobby</button>
     </div>
-  </div>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -64,6 +66,14 @@
       
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game').style.display = 'block';
+    }
+
+    function leaveRoom() {
+      // 1. Remove the "?room=..." parameter from the URL
+      window.history.replaceState(null, '', window.location.pathname);
+      
+      // 2. Reload the page to reset everything
+      window.location.reload();
     }
 
     socket.on('assigned_color', (data) => {
