@@ -23,6 +23,7 @@
       
       <br>
       <button onclick="leaveRoom()">Return to Lobby</button>
+      <button onclick="resignGame()">Resign</button> <!-- New Resign Button -->
     </div>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -68,6 +69,15 @@
       document.getElementById('game').style.display = 'block';
     }
 
+    function resignGame() {
+      if (!roomId) return; // Make sure they are actually in a room
+      
+      // Add a quick confirmation popup so they don't click it by accident
+      if (confirm("Are you sure you want to resign?")) {
+        socket.emit('resign', { room: roomId, username: username });
+      }
+    }
+
     function leaveRoom() {
       // 1. Remove the "?room=..." parameter from the URL
       window.history.replaceState(null, '', window.location.pathname);
@@ -111,6 +121,10 @@
         document.getElementById('status').textContent = '🤝 Stalemate! Draw.';
       } else if (data.result === 'check') {
         document.getElementById('turn-indicator').textContent += ' ⚠️ Check!';
+      } else if (data.result === 'white_resigned') {
+        document.getElementById('status').textContent = 'White resigned! Black wins! 🎉';
+      } else if (data.result === 'black_resigned') {
+        document.getElementById('status').textContent = 'Black resigned! White wins! 🎉';
       }
     });
 

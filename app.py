@@ -86,5 +86,26 @@ def on_move(data):
         # Catch errors if the move format was manipulated
         emit('invalid_move', room=request.sid)
 
+@socketio.on('resign')
+def on_resign(data):
+    room = data.get('room')
+    username = data.get('username')
+    
+    # 1. Verify the room exists and the user is actually a registered player in it
+    if room not in rooms or username not in rooms[room]['players']:
+        return
+        
+    player_color = rooms[room]['players'][username]
+    board = rooms[room]['board']
+    
+    # 2. Determine the endgame status based on who resigned
+    if player_color == 'white':
+        game_result = 'white_resigned'
+    else:
+        game_result = 'black_resigned'
+        
+    # 3. Broadcast the resignation result to both players so their screens update
+    emit('board_state', {'fen': board.fen(), 'result': game_result}, room=room)
+
 if __name__ == '__main__':
     socketio.run(app, debug=True)
