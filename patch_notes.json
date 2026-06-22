@@ -1,0 +1,17 @@
+[
+  {
+    "date": "2026-06-22",
+    "feature": "Auto-Rejoin",
+    "description": "You will now automatically rejoin your active game if you accidentally refresh or close the page!"
+  },
+  {
+    "date": "2026-06-22",
+    "feature": "Resignation",
+    "description": "Added a \"Resign\" button for when you know you are beat."
+  },
+  {
+    "date": "2026-06-22",
+    "feature": "Return to Lobby",
+    "description": "You can now easily leave an ongoing or finished game to start a new one."
+  }
+]

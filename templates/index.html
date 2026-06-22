@@ -14,6 +14,18 @@
     <div id="lobby">
       <input id="room-input" placeholder="Enter room code (e.g. room1)" />
       <button onclick="joinGame()">Join Game</button>
+      
+      <!-- DYNAMIC PATCH NOTES SECTION -->
+      <div id="patch-notes">
+        <h2>📜 Latest Patch Notes</h2>
+        <ul>
+          {% for note in patch_notes %}
+            <li><strong>{{ note.date }} - {{ note.feature }}:</strong> {{ note.description }}</li>
+          {% else %}
+            <li>No recent patch notes.</li>
+          {% endfor %}
+        </ul>
+      </div>
     </div>
 
     <div id="game" style="display:none">

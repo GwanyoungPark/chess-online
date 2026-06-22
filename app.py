@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room
 import chess
+import json
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'chess-secret'
@@ -13,7 +15,14 @@ rooms = {}
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Load the patch notes from the JSON file
+    notes = []
+    if os.path.exists('patch_notes.json'):
+        with open('patch_notes.json', 'r') as file:
+            notes = json.load(file)
+            
+    # Send the notes data to index.html using Jinja2
+    return render_template('index.html', patch_notes=notes)
 
 @socketio.on('join')
 def on_join(data):
