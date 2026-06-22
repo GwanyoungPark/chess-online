@@ -205,9 +205,41 @@
     }
 
     function onDrop(source, target) {
-      const move = game.move({ from: source, to: target, promotion: 'q' });
+      // 1. Get information about the piece being moved
+      const piece = game.get(source);
+      let promotionPiece = 'q'; // Default to Queen
+
+      // 2. Detect if the move is a pawn reaching the final rank
+      if (piece && piece.type === 'p') {
+        const isWhitePromotion = (piece.color === 'w' && target.charAt(1) === '8');
+        const isBlackPromotion = (piece.color === 'b' && target.charAt(1) === '1');
+        
+        if (isWhitePromotion || isBlackPromotion) {
+          // Ask the player what they want to promote to
+          let choice = prompt("Promote to: (q)ueen, (r)ook, (b)ishop, or (n)ight?", "q");
+          
+          // Verify their input is valid, otherwise fallback to Queen
+          if (choice) {
+            choice = choice.toLowerCase().trim();
+            if (['q', 'r', 'b', 'n'].includes(choice)) {
+              promotionPiece = choice;
+            }
+          }
+        }
+      }
+
+      // 3. Make the move using the player's chosen promotion piece
+      const move = game.move({ from: source, to: target, promotion: promotionPiece });
+      
+      // If the move is illegal, snap the piece back
       if (move === null) return 'snapback';
-      socket.emit('move', { room: roomId, move: move.from + move.to + (move.promotion || '') });
+      
+      // 4. Send the move to your Flask backend
+      socket.emit('move', { 
+          room: roomId, 
+          username: username, 
+          move: move.from + move.to + (move.promotion || '') 
+      });
     }
 
     function onSnapEnd() {
