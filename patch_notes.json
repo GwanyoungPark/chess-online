@@ -1,17 +1,22 @@
 [
   {
     "date": "2026-06-22",
-    "feature": "Auto-Rejoin",
-    "description": "You will now automatically rejoin your active game if you accidentally refresh or close the page!"
+    "feature": "Auto-Rejoin/invisible username",
+    "description": "Fixed a bug where you after refreshing the page as white, you would be forced to play as black and unable to move. Now it sends you back to the game automatically as the correct color. Please make sure you are not on a different browse/device obviously (such as playing on your browser then going to an incognito tab, which resets your player ID). It should work if you open a new tab on the same browser though."
   },
   {
     "date": "2026-06-22",
     "feature": "Resignation",
-    "description": "Added a \"Resign\" button for when you know you are beat."
+    "description": "Added a \"Resign\" button due to high demand right below the chess board. Press on it, it will give you a confirmation pop-up, confirming it will end the game"
   },
   {
     "date": "2026-06-22",
     "feature": "Return to Lobby",
-    "description": "You can now easily leave an ongoing or finished game to start a new one."
-  }
+    "description": "Paired with the Auto-rejoin, allows you to actually go back to the lobby after the game ends / while in the middle of the game"
+  },
+  {
+    "date": "2026-06-22",
+    "feature": "Patch Notes",
+    "description": "Added a patch notes section to the homepage to explain what features have been added / what bugs have been fixed."
+    }
 ]
