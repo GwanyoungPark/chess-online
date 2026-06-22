@@ -18,25 +18,35 @@ def index():
 @socketio.on('join')
 def on_join(data):
     room = data['room']
+    username = data.get('username')
     join_room(room)
     
-    # If the room doesn't exist, create it with a fresh board
+    # If the room doesn't exist, create it with a fresh board [1]
     if room not in rooms:
         rooms[room] = {'board': chess.Board(), 'players': {}}
     
-    # Assign colors to up to 2 players based on their session ID (request.sid)
-    player_count = len(rooms[room]['players'])
-    if player_count == 0:
-        rooms[room]['players'][request.sid] = 'white'
+    players = rooms[room]['players']
+    
+    # 1. Check if this is a returning player who just refreshed
+    if username in players:
+        # Re-assign them their original color!
+        emit('assigned_color', {'color': players[username]})
+        
+    # 2. If it is a new player, and the room is empty
+    elif len(players) == 0:
+        players[username] = 'white'
         emit('assigned_color', {'color': 'white'})
-    elif player_count == 1 and request.sid not in rooms[room]['players']:
-        rooms[room]['players'][request.sid] = 'black'
+        
+    # 3. If it is a new player, and there is one person in the room
+    elif len(players) == 1:
+        players[username] = 'black'
         emit('assigned_color', {'color': 'black'})
+        
+    # 4. Third person joins -> spectator (no color assigned)
     else:
-        # Third person joins -> becomes a spectator. No color is assigned.
         pass
         
-    # Emit the current board state to the person who just joined
+    # Always emit the current board state so the refreshed player can see the pieces
     current_board = rooms[room]['board']
     emit('board_state', {'fen': current_board.fen(), 'result': None})
 

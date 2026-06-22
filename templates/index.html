@@ -12,6 +12,7 @@
     <h1>♟ Chess Online</h1>
 
     <div id="lobby">
+      <input id="username-input" placeholder="Enter your name" />
       <input id="room-input" placeholder="Enter room code (e.g. room1)" />
       <button onclick="joinGame()">Join Game</button>
     </div>
@@ -33,11 +34,17 @@
     let board, game;
     let myColor = null;
     let roomId = null;
+    let username = null;
 
     function joinGame() {
       roomId = document.getElementById('room-input').value.trim();
-      if (!roomId) return alert('Enter a room code!');
-      socket.emit('join', { room: roomId });
+      username = document.getElementById('username-input').value.trim();
+      
+      if (!roomId || !username) return alert('Enter both a name and a room code!');
+      
+      // Emit the username along with the room
+      socket.emit('join', { room: roomId, username: username });
+      
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game').style.display = 'block';
     }
