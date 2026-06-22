@@ -128,5 +128,27 @@ def on_resign(data):
     # 3. Broadcast the resignation result to both players so their screens update
     emit('board_state', {'fen': board.fen(), 'result': game_result}, room=room)
 
+@socketio.on('draw_offer')
+def on_draw_offer(data):
+    room = data.get('room')
+    username = data.get('username')
+    
+    # Verify the user is actually playing in this room
+    if room in rooms and username in rooms[room]['players']:
+        # Broadcast the offer to the opponent
+        emit('draw_requested', {'from_user': username}, room=room)
+
+@socketio.on('draw_accept')
+def on_draw_accept(data):
+    room = data.get('room')
+    
+    if room in rooms:
+        # We can reuse the 'resigned' flag to permanently lock the server board
+        rooms[room]['resigned'] = True 
+        
+        board = rooms[room]['board']
+        # Broadcast the agreed draw to both players so their screens update
+        emit('board_state', {'fen': board.fen(), 'result': 'draw_agreed'}, room=room)
+
 if __name__ == '__main__':
     socketio.run(app, debug=True)

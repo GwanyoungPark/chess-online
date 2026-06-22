@@ -58,6 +58,7 @@
           
           <button onclick="leaveRoom()">Return to Lobby</button>
           <button onclick="resignGame()">Resign</button>
+          <button onclick="offerDraw()">Offer Draw</button> 
         </div>
 
         <!-- Right Side: Move List -->
@@ -126,6 +127,13 @@
       // Add a quick confirmation popup so they don't click it by accident
       if (confirm("Are you sure you want to resign?")) {
         socket.emit('resign', { room: roomId, username: username });
+      }
+    }
+
+    function offerDraw() {
+      if (!roomId) return;
+      if (confirm("Are you sure you want to offer a draw?")) {
+        socket.emit('draw_offer', { room: roomId, username: username });
       }
     }
 
@@ -198,11 +206,33 @@
       } else if (data.result === 'black_resigned') {
         isResigned = true; // Lock the game
         document.getElementById('status').textContent = 'Black resigned! White wins! 🎉';
+      } else if (data.result === 'draw_agreed') { 
+        isResigned = true; // Lock the board
+        document.getElementById('status').textContent = '🤝 Game drawn by mutual agreement.';
       }
-    });
+      }
+    );
 
     socket.on('invalid_move', () => {
       board.position(game.fen()); // snap back
+    });
+
+    socket.on('draw_requested', (data) => {
+      // Make sure the person who clicked 'offer' doesn't get asked
+      if (data.from_user !== username) {
+        if (confirm("Your opponent has offered a draw. Do you accept?")) {
+          socket.emit('draw_accept', { room: roomId });
+        }
+      }
+    });
+
+    socket.on('draw_requested', (data) => {
+      // Make sure the person who clicked 'offer' doesn't get asked
+      if (data.from_user !== username) {
+        if (confirm("Your opponent has offered a draw. Do you accept?")) {
+          socket.emit('draw_accept', { room: roomId });
+        }
+      }
     });
 
     function onDragStart(source, piece) {
