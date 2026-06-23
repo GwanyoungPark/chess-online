@@ -5,7 +5,7 @@ import json
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'chess-secret'
+app.config['SECRET_KEY'] = 'AKH49wqa31y47hrWAHDbwajbdkiK#&Gebj2q,ebqoPO:E@IPQE'
 # Using gevent for async_mode as required by your deployment setup
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 app.config['PROPAGATE_EXCEPTIONS'] = True
