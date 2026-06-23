@@ -35,7 +35,7 @@ def on_join(data):
         elif len(rooms[room]['players']) == 1:
             color = 'black'
             rooms[room]['players'][username] = color
-        # 4. NEW: If the room is full, they become a spectator!
+        # 4. If the room is full, they become a spectator!
         else:
             color = 'spectator'
             
@@ -45,7 +45,13 @@ def on_join(data):
     # Always emit the current board state and move history to the room
     current_board = rooms[room]['board']
     move_history = [move.uci() for move in current_board.move_stack]
-    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': None}, room=room)
+    
+    # Get the saved result (this will be 'None' if the game is still ongoing)
+    saved_result = rooms[room].get('result') 
+    
+    # Send the saved result instead of hardcoding 'None'
+    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': saved_result}, room=room)
+
 
 @socketio.on('move')
 def on_move(data):
@@ -78,6 +84,10 @@ def on_move(data):
                 game_result = 'stalemate'
             elif board.is_check():
                 game_result = 'check'
+
+            # Permanently save checkmates and stalemates to the room
+            if game_result in ['checkmate', 'stalemate']:
+                rooms[room]['result'] = game_result
                 
             # Broadcast the valid move, game status, and history to everyone
             move_history = [move.uci() for move in board.move_stack] # Get the move list
@@ -111,8 +121,15 @@ def on_resign(data):
     else:
         game_result = 'black_resigned'
         
-    # 3. Broadcast the resignation result to both players so their screens update
-    emit('board_state', {'fen': board.fen(), 'result': game_result}, room=room)
+    # Lock the room and save the result for page refreshes
+    rooms[room]['resigned'] = True 
+    rooms[room]['result'] = game_result # Save the actual result 
+    
+    # Fetch the move history so the frontend board doesn't reset to the start!
+    move_history = [move.uci() for move in board.move_stack]
+    
+    # Emit with the history included
+    emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': game_result}, room=room)
 
 @socketio.on('draw_offer')
 def on_draw_offer(data):
@@ -129,12 +146,15 @@ def on_draw_accept(data):
     room = data.get('room')
     
     if room in rooms:
-        # We can reuse the 'resigned' flag to permanently lock the server board
         rooms[room]['resigned'] = True 
+        rooms[room]['result'] = 'draw_agreed' # Save the result
         
         board = rooms[room]['board']
-        # Broadcast the agreed draw to both players so their screens update
-        emit('board_state', {'fen': board.fen(), 'result': 'draw_agreed'}, room=room)
-
+        
+        # Fetch the move history
+        move_history = [move.uci() for move in board.move_stack] 
+        
+        # Emit with the history included
+        emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': 'draw_agreed'}, room=room)
 if __name__ == '__main__':
     socketio.run(app, debug=True)
