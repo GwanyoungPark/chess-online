@@ -76,6 +76,7 @@
     let pendingPromotion = null; // Tracks a move while the menu is open
     let currentMoveOffset = 0; // Tracks which past move we are looking at
     let isViewingHistory = false; // Flags if we are looking at the past
+    let selectedSquare = null;  // Tracks the currently tapped square
 
     // 1. Automatically generate or retrieve the player's secret ID
     let username = localStorage.getItem('chessPlayerId');
@@ -132,6 +133,63 @@
       // 2. Reload the page to reset everything
       window.location.reload();
     }
+
+    function highlightSquare(squareEl) {
+      clearHighlights();
+      // Draw a sleek crimson border matching your game's CSS theme
+      squareEl.style.border = '3px solid #e94560'; 
+      squareEl.style.boxSizing = 'border-box';
+    }
+
+    function clearHighlights() {
+      // 'square-55d63' is the default CSS class chessboardjs applies to all squares
+      const squares = document.querySelectorAll('.square-55d63');
+      squares.forEach(s => {
+          s.style.border = '';
+          s.style.boxSizing = '';
+      });
+    }
+    
+    document.getElementById('board').addEventListener('click', function(e) {
+      // 1. Make sure the game is active and they aren't a spectator
+      if (game.game_over() || isResigned || isViewingHistory || myColor === 'spectator') return;
+      
+      // Make sure it is actually their turn
+      const isMyTurn = (game.turn() === 'w' && myColor === 'white') || 
+                       (game.turn() === 'b' && myColor === 'black');
+      if (!isMyTurn) return;
+
+      // 2. Find out which square was clicked
+      const squareEl = e.target.closest('.square-55d63');
+      if (!squareEl) return; // They clicked the board edge, not a square
+      
+      const square = squareEl.getAttribute('data-square');
+      const piece = game.get(square);
+
+      if (selectedSquare === null) {
+        // 3. If nothing is selected, select the piece if it belongs to the player
+        if (piece && piece.color === myColor.charAt(0)) {
+          selectedSquare = square;
+          highlightSquare(squareEl);
+        }
+      } else {
+        // 4. A piece is already selected!
+        // If they click another one of their own pieces, simply switch the selection
+        if (piece && piece.color === myColor.charAt(0)) {
+          selectedSquare = square;
+          highlightSquare(squareEl);
+          return;
+        }
+
+        // 5. If they click an empty square or an enemy piece, attempt to move!
+        // We can completely reuse your perfectly working drag-and-drop logic
+        onDrop(selectedSquare, square);
+        
+        // Clear the selection and UI highlights
+        selectedSquare = null;
+        clearHighlights();
+      }
+    });
 
     socket.on('assigned_color', (data) => {
       myColor = data.color;
