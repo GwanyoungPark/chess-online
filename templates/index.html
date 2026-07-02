@@ -173,13 +173,15 @@
         onSnapEnd,
         pieceTheme: 'https://raw.githubusercontent.com/oakmac/chessboardjs/master/website/img/chesspieces/wikipedia/{piece}.png'
       });
+
       const boardElement = document.getElementById('board');
       
-      // Clone the board to wipe out any old click listeners from previous connections
-      const newBoardElement = boardElement.cloneNode(true);
-      boardElement.parentNode.replaceChild(newBoardElement, boardElement);
+      // NEW: Safely check if the click listener has already been attached
+      if (!boardElement.dataset.tapEnabled) {
+        boardElement.dataset.tapEnabled = 'true'; // Lock it so it only attaches once
+        
+        boardElement.addEventListener('click', function(e) {
 
-      newBoardElement.addEventListener('click', function(e) {
       // 1. Make sure the game is active and they aren't a spectator
       if (game.game_over() || isResigned || isViewingHistory || myColor === 'spectator') return;
       
