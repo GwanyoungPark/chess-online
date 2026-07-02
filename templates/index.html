@@ -149,8 +149,37 @@
           s.style.boxSizing = '';
       });
     }
-    
-    document.getElementById('board').addEventListener('click', function(e) {
+
+    socket.on('assigned_color', (data) => {
+      myColor = data.color;
+      
+      // Default the spectator's board orientation to white
+      const boardOrientation = (myColor === 'black') ? 'black' : 'white';
+      
+      // Update the status text so they know they are just watching
+      if (myColor === 'spectator') {
+        document.getElementById('status').textContent = '👁️ You are spectating';
+      } else {
+        document.getElementById('status').textContent = `You are playing as ${myColor}`;
+      }
+
+      game = new Chess();
+      board = Chessboard('board', {
+        draggable: (myColor !== 'spectator'), // COMPLETELY disables dragging for spectators
+        position: 'start',
+        orientation: boardOrientation,
+        onDragStart,
+        onDrop,
+        onSnapEnd,
+        pieceTheme: 'https://raw.githubusercontent.com/oakmac/chessboardjs/master/website/img/chesspieces/wikipedia/{piece}.png'
+      });
+      const boardElement = document.getElementById('board');
+      
+      // Clone the board to wipe out any old click listeners from previous connections
+      const newBoardElement = boardElement.cloneNode(true);
+      boardElement.parentNode.replaceChild(newBoardElement, boardElement);
+
+      newBoardElement.addEventListener('click', function(e) {
       // 1. Make sure the game is active and they aren't a spectator
       if (game.game_over() || isResigned || isViewingHistory || myColor === 'spectator') return;
       
@@ -190,30 +219,6 @@
         clearHighlights();
       }
     });
-
-    socket.on('assigned_color', (data) => {
-      myColor = data.color;
-      
-      // Default the spectator's board orientation to white
-      const boardOrientation = (myColor === 'black') ? 'black' : 'white';
-      
-      // Update the status text so they know they are just watching
-      if (myColor === 'spectator') {
-        document.getElementById('status').textContent = '👁️ You are spectating';
-      } else {
-        document.getElementById('status').textContent = `You are playing as ${myColor}`;
-      }
-
-      game = new Chess();
-      board = Chessboard('board', {
-        draggable: (myColor !== 'spectator'), // COMPLETELY disables dragging for spectators
-        position: 'start',
-        orientation: boardOrientation,
-        onDragStart,
-        onDrop,
-        onSnapEnd,
-        pieceTheme: 'https://raw.githubusercontent.com/oakmac/chessboardjs/master/website/img/chesspieces/wikipedia/{piece}.png'
-      });
     });
 
     socket.on('board_state', (data) => {
