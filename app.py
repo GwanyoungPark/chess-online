@@ -1,160 +1,167 @@
+import os
+import secrets
+
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room
 import chess
-import json
-import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'AKH49wqa31y47hrWAHDbwajbdkiK#&Gebj2q,ebqoPO:E@IPQE'
-# Using gevent for async_mode as required by your deployment setup
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+
+# SECURITY FIX: the secret key used to be hardcoded in source. It's now read
+# from an environment variable, with a random fallback so the app still runs
+# out of the box locally. This app doesn't rely on persistent Flask sessions
+# for gameplay, so a fresh random key on each restart has no effect on
+# players -- if you want a stable key in production, set SECRET_KEY in your
+# host's environment variables (e.g. Heroku config vars).
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
-# Store game rooms: { room_id: { board, players: {sid: color} } }
+# gevent is required here to match the gunicorn worker class in the Procfile.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+
+# In-memory game rooms (no database -- resets on server restart, same as before).
+# room_id -> {
+#   'board': chess.Board(),
+#   'players': {username: 'white' | 'black'},
+#   'resigned': bool,
+#   'result': 'checkmate' | 'stalemate' | 'white_resigned' | 'black_resigned'
+#              | 'draw_agreed' | None
+# }
 rooms = {}
+
+# Results that permanently end a game and get saved on the room.
+GAME_OVER_RESULTS = {'checkmate', 'stalemate'}
+
+
+def room_state(room_id, result=None):
+    """Build the {fen, moves, result} payload broadcast to a room."""
+    board = rooms[room_id]['board']
+    return {
+        'fen': board.fen(),
+        'moves': [move.uci() for move in board.move_stack],
+        'result': result,
+    }
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @socketio.on('join')
 def on_join(data):
     room = data.get('room')
     username = data.get('username')
-    join_room(room) # Join the socket network room [1]
-    
-    # 1. Initialize room if it doesn't exist
+    if not room or not username:
+        return
+
+    join_room(room)
+
     if room not in rooms:
-        rooms[room] = {'board': chess.Board(), 'players': {username: 'white'}, 'resigned': False}
+        # First player in the room -- they play white.
+        rooms[room] = {
+            'board': chess.Board(),
+            'players': {username: 'white'},
+            'resigned': False,
+            'result': None,
+        }
         color = 'white'
     else:
-        # 2. Check if they are a returning player (Auto-Rejoin)
-        if username in rooms[room]['players']:
-            color = rooms[room]['players'][username]
-        # 3. If there is only 1 player, the new person becomes black
-        elif len(rooms[room]['players']) == 1:
+        players = rooms[room]['players']
+        if username in players:
+            # Returning player (e.g. refreshed the page) -- give back their color.
+            color = players[username]
+        elif len(players) == 1:
+            # Second player in the room -- they play black.
             color = 'black'
-            rooms[room]['players'][username] = color
-        # 4. If the room is full, they become a spectator!
+            players[username] = color
         else:
+            # Room already has two players -- everyone else spectates.
             color = 'spectator'
-            
-    # Tell the user their assigned role
+
+    # Tell this client their role, then sync everyone in the room on the
+    # current position (including a previously-saved result, if the game
+    # already ended -- e.g. this is a refresh after checkmate).
     emit('assigned_color', {'color': color}, room=request.sid)
-    
-    # Always emit the current board state and move history to the room
-    current_board = rooms[room]['board']
-    move_history = [move.uci() for move in current_board.move_stack]
-    
-    # Get the saved result (this will be 'None' if the game is still ongoing)
-    saved_result = rooms[room].get('result') 
-    
-    # Send the saved result instead of hardcoding 'None'
-    emit('board_state', {'fen': current_board.fen(), 'moves': move_history, 'result': saved_result}, room=room)
+    emit('board_state', room_state(room, rooms[room]['result']), room=room)
 
 
 @socketio.on('move')
 def on_move(data):
-    room = data['room']
-    move_uci = data['move']
-    
-    if room not in rooms:
+    room = data.get('room')
+    move_uci = data.get('move')
+    if not room or not move_uci or room not in rooms:
         return
-        
-    # Reject the move if someone has already resigned
-    if rooms[room].get('resigned'):
+
+    if rooms[room]['resigned']:
         emit('invalid_move', room=request.sid)
         return
-        
+
     board = rooms[room]['board']
-    
+
     try:
-        # Parse the move sent by the frontend
         move = chess.Move.from_uci(move_uci)
-        
-        # Validate if the move is strictly legal
-        if move in board.legal_moves:
-            board.push(move)
-            
-            # Check endgame states
-            game_result = None
-            if board.is_checkmate():
-                game_result = 'checkmate'
-            elif board.is_stalemate():
-                game_result = 'stalemate'
-            elif board.is_check():
-                game_result = 'check'
-
-            # Permanently save checkmates and stalemates to the room
-            if game_result in ['checkmate', 'stalemate']:
-                rooms[room]['result'] = game_result
-                
-            # Broadcast the valid move, game status, and history to everyone
-            move_history = [move.uci() for move in board.move_stack] # Get the move list
-            emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': game_result}, room=room)
-
-        else:
-            # Tell the specific client their move was illegal so it snaps back
-            emit('invalid_move', room=request.sid)
     except ValueError:
-        # Catch errors if the move format was manipulated
+        # Malformed move string (e.g. a tampered client).
         emit('invalid_move', room=request.sid)
+        return
+
+    if move not in board.legal_moves:
+        emit('invalid_move', room=request.sid)
+        return
+
+    board.push(move)
+
+    game_result = None
+    if board.is_checkmate():
+        game_result = 'checkmate'
+    elif board.is_stalemate():
+        game_result = 'stalemate'
+    elif board.is_check():
+        game_result = 'check'
+
+    if game_result in GAME_OVER_RESULTS:
+        rooms[room]['result'] = game_result
+
+    emit('board_state', room_state(room, game_result), room=room)
+
 
 @socketio.on('resign')
 def on_resign(data):
     room = data.get('room')
     username = data.get('username')
-    
-    # 1. Verify the room exists and the user is actually a registered player in it
-    if room not in rooms or username not in rooms[room]['players']:
+    if not room or room not in rooms or username not in rooms[room]['players']:
         return
-    
-    # Lock the room on the server
-    rooms[room]['resigned'] = True 
 
     player_color = rooms[room]['players'][username]
-    board = rooms[room]['board']
-    
-    # 2. Determine the endgame status based on who resigned
-    if player_color == 'white':
-        game_result = 'white_resigned'
-    else:
-        game_result = 'black_resigned'
-        
-    # Lock the room and save the result for page refreshes
-    rooms[room]['resigned'] = True 
-    rooms[room]['result'] = game_result # Save the actual result 
-    
-    # Fetch the move history so the frontend board doesn't reset to the start!
-    move_history = [move.uci() for move in board.move_stack]
-    
-    # Emit with the history included
-    emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': game_result}, room=room)
+    game_result = 'white_resigned' if player_color == 'white' else 'black_resigned'
+
+    rooms[room]['resigned'] = True
+    rooms[room]['result'] = game_result
+
+    emit('board_state', room_state(room, game_result), room=room)
+
 
 @socketio.on('draw_offer')
 def on_draw_offer(data):
     room = data.get('room')
     username = data.get('username')
-    
-    # Verify the user is actually playing in this room
+
     if room in rooms and username in rooms[room]['players']:
-        # Broadcast the offer to the opponent
         emit('draw_requested', {'from_user': username}, room=room)
+
 
 @socketio.on('draw_accept')
 def on_draw_accept(data):
     room = data.get('room')
-    
-    if room in rooms:
-        rooms[room]['resigned'] = True 
-        rooms[room]['result'] = 'draw_agreed' # Save the result
-        
-        board = rooms[room]['board']
-        
-        # Fetch the move history
-        move_history = [move.uci() for move in board.move_stack] 
-        
-        # Emit with the history included
-        emit('board_state', {'fen': board.fen(), 'moves': move_history, 'result': 'draw_agreed'}, room=room)
+    if room not in rooms:
+        return
+
+    rooms[room]['resigned'] = True
+    rooms[room]['result'] = 'draw_agreed'
+
+    emit('board_state', room_state(room, 'draw_agreed'), room=room)
+
+
 if __name__ == '__main__':
     socketio.run(app, debug=True)
