@@ -204,10 +204,27 @@ function onDragStart(source, piece) {
   if (!isMyTurn()) return false;
   if (myColor === 'white' && piece.startsWith('b')) return false;
   if (myColor === 'black' && piece.startsWith('w')) return false;
+
+  // TAP-TO-MOVE FIX: capture the selection here rather than relying only on
+  // the click listener below. onDragStart is chessboard.js's own callback
+  // and fires reliably on every mousedown/touchstart -- unlike a separate
+  // click listener, which touch browsers can silently swallow once
+  // chessboard.js calls preventDefault() to stop the page from scrolling
+  // during a drag. This does NOT cancel dragging (we don't return false),
+  // so drag-and-drop keeps working exactly as before.
+  selectedSquare = source;
+  const sourceSquareEl = document.querySelector(`.square-55d63[data-square="${source}"]`);
+  if (sourceSquareEl) highlightSquare(sourceSquareEl);
 }
 
 function onDrop(source, target) {
   if (game.game_over() || isResigned || isViewingHistory) return 'snapback';
+
+  // A stationary tap looks identical to a zero-distance drag from
+  // chessboard.js's perspective (mousedown and mouseup on the same square).
+  // Treat that as "just selecting" -- not a move attempt -- and keep the
+  // selection (set above in onDragStart) so the next tap can complete it.
+  if (source === target) return 'snapback';
 
   const piece = game.get(source);
 
@@ -233,6 +250,9 @@ function onDrop(source, target) {
   // 2. Normal move processing.
   const move = game.move({ from: source, to: target, promotion: 'q' });
   if (move === null) return 'snapback';
+
+  selectedSquare = null;
+  clearHighlights();
 
   socket.emit('move', {
     room: roomId,
